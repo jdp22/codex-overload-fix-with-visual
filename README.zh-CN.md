@@ -236,7 +236,7 @@ bash scripts/install-linux.sh
 Dashboard 也可以注册成 user service，适合远程服务器：
 
 ```bash
-bash scripts/install-dashboard-linux.sh --linger \
+bash scripts/install-dashboard-linux.sh --linger --proxy-port 8890 \
   --content-log "$HOME/.local/state/codex-overload-fix/content-feed.jsonl"
 ```
 
@@ -450,3 +450,4 @@ python tools\check_console_flash.py
 ## 许可证
 
 MIT — 见 [LICENSE](LICENSE)。
+

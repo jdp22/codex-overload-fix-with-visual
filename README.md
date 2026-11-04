@@ -236,7 +236,7 @@ Options: `--port`, `--proxy`, `--require-proxy`, `--upstream`, `--content-log`, 
 The dashboard can also run as a user service on a remote Linux host:
 
 ```bash
-bash scripts/install-dashboard-linux.sh --linger \
+bash scripts/install-dashboard-linux.sh --linger --proxy-port 8890 \
   --content-log "$HOME/.local/state/codex-overload-fix/content-feed.jsonl"
 ```
 
@@ -450,3 +450,4 @@ This project will remain free and open source. Thank you for supporting the proj
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
