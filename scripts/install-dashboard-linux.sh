@@ -2,6 +2,7 @@
 set -euo pipefail
 
 PORT=8899
+PROXY_PORT=17890
 PYTHON_PATH=""
 STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 LOG_PATH="$STATE_HOME/codex-overload-fix/relay.log"
@@ -21,6 +22,7 @@ usage() {
 usage: install-dashboard-linux.sh [options]
 
   --port PORT          Dashboard port (default 8899)
+  --proxy-port PORT    Proxy health-check port (default 17890)
   --log PATH           Relay log to read
   --content-log PATH   Optional response content JSONL feed
   --python-path PATH   Python 3.9+ interpreter
@@ -33,6 +35,7 @@ EOF
 while [ $# -gt 0 ]; do
     case "$1" in
         --port)         [ $# -ge 2 ] || die "--port needs a value"; PORT="$2"; shift 2 ;;
+        --proxy-port)   [ $# -ge 2 ] || die "--proxy-port needs a value"; PROXY_PORT="$2"; shift 2 ;;
         --log)          [ $# -ge 2 ] || die "--log needs a value"; LOG_PATH="$2"; shift 2 ;;
         --content-log)  [ $# -ge 2 ] || die "--content-log needs a value"; CONTENT_LOG="$2"; shift 2 ;;
         --python-path)  [ $# -ge 2 ] || die "--python-path needs a value"; PYTHON_PATH="$2"; shift 2 ;;
@@ -45,6 +48,8 @@ done
 
 case "$PORT" in ''|*[!0-9]*) die "port must be a number: $PORT" ;; esac
 [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || die "port out of range: $PORT"
+case "$PROXY_PORT" in ''|*[!0-9]*) die "proxy port must be a number: $PROXY_PORT" ;; esac
+[ "$PROXY_PORT" -ge 1 ] && [ "$PROXY_PORT" -le 65535 ] || die "proxy port out of range: $PROXY_PORT"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 SERVER="$ROOT/dashboard/server.py"
@@ -63,7 +68,7 @@ Documentation=https://github.com/NewBeeM4n/codex-overload-fix
 
 [Service]
 Type=simple
-ExecStart="$PYTHON_PATH" "$SERVER" --host 127.0.0.1 --port "$PORT" --log "$LOG_PATH" --content-log "$CONTENT_LOG"
+ExecStart="$PYTHON_PATH" "$SERVER" --host 127.0.0.1 --port "$PORT" --proxy-port "$PROXY_PORT" --log "$LOG_PATH" --content-log "$CONTENT_LOG"
 WorkingDirectory=$ROOT
 Restart=always
 RestartSec=5
