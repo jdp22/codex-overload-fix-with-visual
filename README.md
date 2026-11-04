@@ -40,18 +40,18 @@ One evening of real use, measured:
 
 ## Local live dashboard
 
-The repository includes a dependency-free local dashboard for request volume, success rate, pending requests, retry counts and reasons, per-minute trends, recent requests, and relay/proxy health:
+The repository includes a dependency-free local dashboard for request volume, success rate, pending requests, retry counts and reasons, per-minute trends, recent requests, and relay/proxy health. The relay installer does not start the dashboard automatically; start it in a separate terminal:
 
 ```powershell
-python dashboard/server.py --log "$HOME\.codex-overload-fix\relay.log" --port 8899
+powershell -ExecutionPolicy Bypass -File dashboard\start-dashboard.ps1
 ```
 
 Open <http://127.0.0.1:8899/>. The page polls the log every two seconds and binds only to loopback.
 
-To show returned response text in the dashboard, explicitly enable the opt-in content feed when starting the relay:
+To show returned response text, explicitly enable the opt-in content feed in the relay's persistent start command. The three platform installers leave this disabled by design because it writes response text to a local file. The following is for a manually started relay; if the installer already runs the relay, add the same option to its launcher or service command instead of starting a second copy:
 
 ```powershell
-python relay/relay.py ... --content-log "$HOME\.codex-overload-fix\content-feed.jsonl"
+python relay\relay.py --port 8787 --log "$HOME\.codex-overload-fix\relay.log" --content-log "$HOME\.codex-overload-fix\content-feed.jsonl"
 ```
 
 Content capture is off by default. When enabled it records only `response.output_text.delta/done`, limits each segment to 4,000 characters, rotates at about 2 MB, and never records request bodies, headers, or credentials. See [`dashboard/README.md`](dashboard/README.md) for details.

@@ -40,18 +40,18 @@
 
 ## 本地实时监控页
 
-仓库现在附带一个不依赖第三方库的本地 dashboard，可以实时查看请求数、成功率、处理中请求、重试次数和原因、按分钟趋势、最近请求以及 relay/proxy 健康状态。启动：
+仓库现在附带一个不依赖第三方库的本地 dashboard，可以实时查看请求数、成功率、处理中请求、重试次数和原因、按分钟趋势、最近请求以及 relay/proxy 健康状态。它不会随 relay 安装器自动启动，需要另开一个终端启动：
 
 ```powershell
-python dashboard/server.py --log "$HOME\.codex-overload-fix\relay.log" --port 8899
+powershell -ExecutionPolicy Bypass -File dashboard\start-dashboard.ps1
 ```
 
 然后打开 <http://127.0.0.1:8899/>。页面默认每 2 秒读取一次日志，只绑定本机回环地址。
 
-如果还要显示上游返回的文本内容，需要在 relay 启动参数中显式加入 `--content-log`：
+如果要显示上游返回的文本内容，还需要在 relay 的持久启动命令中显式加入 `--content-log`。当前三平台安装器不会自动开启这个选项；这是有意的，因为它会把响应文本写入本地文件。下面的命令适用于手动启动 relay；如果 relay 已由安装器运行，不要再启动第二个副本，而要把同样的参数加到对应的启动器或服务命令中：
 
 ```powershell
-python relay/relay.py ... --content-log "$HOME\.codex-overload-fix\content-feed.jsonl"
+python relay\relay.py --port 8787 --log "$HOME\.codex-overload-fix\relay.log" --content-log "$HOME\.codex-overload-fix\content-feed.jsonl"
 ```
 
 内容捕获默认关闭；开启后只记录 `response.output_text.delta/done`，每段最多 4000 个字符，文件约 2 MB 轮转，不记录请求体、Header 或凭证。详细说明见 [`dashboard/README.md`](dashboard/README.md)。
