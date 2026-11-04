@@ -64,7 +64,7 @@ Documentation=https://github.com/NewBeeM4n/codex-overload-fix
 [Service]
 Type=simple
 ExecStart="$PYTHON_PATH" "$SERVER" --host 127.0.0.1 --port "$PORT" --log "$LOG_PATH" --content-log "$CONTENT_LOG"
-WorkingDirectory="$ROOT"
+WorkingDirectory=$ROOT
 Restart=always
 RestartSec=5
 StandardOutput=journal
