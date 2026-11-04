@@ -116,9 +116,15 @@ def load_content(content_path: Path, cutoff: datetime) -> dict[str, Any]:
                 "status": "streaming",
                 "text": "",
                 "truncated": False,
+                "model": "",
+                "reasoning_effort": "",
             },
         )
         item["last_at"] = dt.isoformat(timespec="seconds")
+        for key in ("model", "reasoning_effort"):
+            value = row.get(key)
+            if isinstance(value, str) and value:
+                item[key] = value
         if event == "start":
             item["started_at"] = dt.isoformat(timespec="seconds")
             item["status"] = "streaming"
@@ -449,3 +455,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
