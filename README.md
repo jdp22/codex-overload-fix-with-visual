@@ -46,7 +46,7 @@ The repository includes a dependency-free local dashboard for request volume, su
 powershell -ExecutionPolicy Bypass -File dashboard\start-dashboard.ps1
 ```
 
-Open <http://127.0.0.1:8899/>. The page polls the log every two seconds and binds only to loopback.
+Open <http://127.0.0.1:8899/>. The page polls the log every two seconds and binds only to loopback. The recent-request table includes the model, reasoning effort, attempt count, end-to-end duration, and (when the opt-in content feed is enabled) streamed text output speed in characters per second.
 
 To show returned response text, explicitly enable the opt-in content feed in the relay's persistent start command. The three platform installers leave this disabled by design because it writes response text to a local file. The following is for a manually started relay; if the installer already runs the relay, add the same option to its launcher or service command instead of starting a second copy:
 
