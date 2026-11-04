@@ -332,6 +332,24 @@ def metrics(
         row = trend.get(key, {"requests": 0, "successes": 0, "retries": 0, "failures": 0})
         trend_rows.append({"time": datetime.fromtimestamp(key).isoformat(timespec="minutes"), **row})
 
+    request_rows = []
+    for item in reversed(requests[-30:]):
+        row = dict(item)
+        try:
+            started = datetime.fromisoformat(item.get("started_at", ""))
+        except (TypeError, ValueError):
+            started = None
+        try:
+            finished = datetime.fromisoformat(item.get("completed_at", "")) if item.get("completed_at") else now
+        except (TypeError, ValueError):
+            finished = now
+        row["duration_seconds"] = (
+            round(max(0.0, (finished - started).total_seconds()), 3)
+            if started and finished
+            else None
+        )
+        request_rows.append(row)
+
     return {
         "generated_at": now.isoformat(timespec="seconds"),
         "window_seconds": window,
@@ -364,7 +382,7 @@ def metrics(
         "retry_reasons": dict(retry_reasons),
         "served_models": dict(served_models),
         "trend": trend_rows,
-        "requests_detail": list(reversed(requests[-30:])),
+        "requests_detail": request_rows,
         "events": list(reversed(events)),
     }
 
