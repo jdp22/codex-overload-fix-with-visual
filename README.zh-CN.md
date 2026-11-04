@@ -38,6 +38,24 @@
 
 > 有一条 799 KB 的请求**连续失败 8 次**，第 9 次成功。用户全程什么都没看见。
 
+## 本地实时监控页
+
+仓库现在附带一个不依赖第三方库的本地 dashboard，可以实时查看请求数、成功率、处理中请求、重试次数和原因、按分钟趋势、最近请求以及 relay/proxy 健康状态。启动：
+
+```powershell
+python dashboard/server.py --log "$HOME\.codex-overload-fix\relay.log" --port 8899
+```
+
+然后打开 <http://127.0.0.1:8899/>。页面默认每 2 秒读取一次日志，只绑定本机回环地址。
+
+如果还要显示上游返回的文本内容，需要在 relay 启动参数中显式加入 `--content-log`：
+
+```powershell
+python relay/relay.py ... --content-log "$HOME\.codex-overload-fix\content-feed.jsonl"
+```
+
+内容捕获默认关闭；开启后只记录 `response.output_text.delta/done`，每段最多 4000 个字符，文件约 2 MB 轮转，不记录请求体、Header 或凭证。详细说明见 [`dashboard/README.md`](dashboard/README.md)。
+
 ---
 
 ## 问题是什么

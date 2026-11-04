@@ -38,6 +38,24 @@ One evening of real use, measured:
 
 > One 799 KB request failed **8 times in a row** and succeeded on the 9th attempt. The user never saw a thing.
 
+## Local live dashboard
+
+The repository includes a dependency-free local dashboard for request volume, success rate, pending requests, retry counts and reasons, per-minute trends, recent requests, and relay/proxy health:
+
+```powershell
+python dashboard/server.py --log "$HOME\.codex-overload-fix\relay.log" --port 8899
+```
+
+Open <http://127.0.0.1:8899/>. The page polls the log every two seconds and binds only to loopback.
+
+To show returned response text in the dashboard, explicitly enable the opt-in content feed when starting the relay:
+
+```powershell
+python relay/relay.py ... --content-log "$HOME\.codex-overload-fix\content-feed.jsonl"
+```
+
+Content capture is off by default. When enabled it records only `response.output_text.delta/done`, limits each segment to 4,000 characters, rotates at about 2 MB, and never records request bodies, headers, or credentials. See [`dashboard/README.md`](dashboard/README.md) for details.
+
 ---
 
 ## The problem

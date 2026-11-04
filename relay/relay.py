@@ -12,6 +12,7 @@ SSE stream is inspected to decide whether the attempt succeeded.
 """
 
 import argparse
+import datetime
 import gzip
 import hashlib
 import hmac
@@ -65,6 +66,173 @@ def is_overload(err):
 LOG_LOCK = threading.Lock()
 LOG_SIZE = [0]
 LOG_MAX = 8 * 1024 * 1024
+
+# Response content capture is deliberately opt-in.  Keep the limits small
+# enough that an accidentally verbose response cannot turn the relay into a
+# second unbounded transcript store.
+CONTENT_SEGMENT_MAX = 4000
+CONTENT_LOG_MAX = 2 * 1024 * 1024
+CONTENT_LOG_LOCK = threading.Lock()
+
+
+def _content_log_path():
+    """Return the configured content feed path, or an empty string.
+
+    Tests and embedders construct ``ARGS`` themselves, so use ``getattr``
+    rather than requiring the new command-line field everywhere.
+    """
+    return getattr(ARGS, "content_log", "") if ARGS is not None else ""
+
+
+def _content_timestamp():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(
+        timespec="milliseconds"
+    ).replace("+00:00", "Z")
+
+
+def _write_content_record(event, text="", port=0, truncated=False):
+    """Append one safe, bounded record to the optional local JSONL feed.
+
+    The record intentionally contains no request data, headers, event payload,
+    model information, or credentials.  Every write is best-effort so a bad
+    path or a full disk never changes response forwarding behaviour.
+    """
+    path = _content_log_path()
+    if not path or event not in {"start", "delta", "done"}:
+        return
+    if not isinstance(text, str):
+        text = ""
+        truncated = False
+    if len(text) > CONTENT_SEGMENT_MAX:
+        text = text[:CONTENT_SEGMENT_MAX]
+        truncated = True
+    try:
+        record = {
+            "time": _content_timestamp(),
+            "port": int(port or 0),
+            "event": event,
+            "text": text,
+            "truncated": bool(truncated),
+        }
+        encoded = (
+            json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
+        ).encode("utf-8")
+        feed = os.path.abspath(os.fspath(path))
+        parent = os.path.dirname(feed)
+        with CONTENT_LOG_LOCK:
+            os.makedirs(parent, exist_ok=True)
+            try:
+                current_size = os.path.getsize(feed)
+            except OSError:
+                current_size = 0
+            if current_size and current_size + len(encoded) > CONTENT_LOG_MAX:
+                # Replace is atomic for readers that poll the path.  A single
+                # previous generation is enough to keep disk use bounded.
+                try:
+                    os.replace(feed, feed + ".1")
+                except OSError:
+                    pass
+            flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
+            fd = os.open(feed, flags, 0o600)
+            try:
+                if os.name != "nt":
+                    try:
+                        os.chmod(feed, 0o600)
+                    except OSError:
+                        pass
+                with os.fdopen(fd, "ab") as out:
+                    fd = None
+                    out.write(encoded)
+                    out.flush()
+            finally:
+                if fd is not None:
+                    os.close(fd)
+    except (OSError, TypeError, ValueError):
+        # Content capture is an observability aid and must never break a live
+        # response because its destination is unavailable.
+        return
+
+
+class ContentCapture:
+    """Incrementally inspect committed SSE bytes without altering them."""
+
+    def __init__(self, port, enabled=None):
+        try:
+            self.port = int(port or 0)
+        except (TypeError, ValueError):
+            self.port = 0
+        self.pending = bytearray()
+        self.seen_done = False
+        path_enabled = bool(_content_log_path())
+        self.enabled = (
+            path_enabled
+            if enabled is None
+            else path_enabled and bool(enabled)
+        )
+
+    def start(self):
+        if self.enabled:
+            _write_content_record("start", port=self.port)
+
+    def feed(self, data):
+        if not self.enabled or not data:
+            return
+        if isinstance(data, str):
+            data = data.encode("utf-8", "replace")
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            return
+        self.pending.extend(data)
+        # Responses use one JSON object per data line.  Keep a hard bound on
+        # an unterminated line so malformed upstream bytes cannot accumulate
+        # forever while the relay continues forwarding them.
+        if len(self.pending) > 1 << 20 and b"\n" not in self.pending:
+            self.pending.clear()
+            return
+        while b"\n" in self.pending:
+            line, _, rest = self.pending.partition(b"\n")
+            self.pending = bytearray(rest)
+            if len(line) <= 1 << 20:
+                self._line(bytes(line).rstrip(b"\r"))
+
+    def finish(self):
+        if not self.enabled:
+            return
+        if self.pending:
+            self._line(bytes(self.pending).rstrip(b"\r"))
+            self.pending.clear()
+        # Some interrupted/older streams do not emit response.output_text.done;
+        # provide a terminal marker so a poller can close the current item.
+        if not self.seen_done:
+            _write_content_record("done", port=self.port)
+
+    def _line(self, line):
+        line = line.strip()
+        if not line.startswith(b"data:"):
+            return
+        payload = line[5:].strip()
+        if not payload or payload == b"[DONE]":
+            return
+        try:
+            event = json.loads(payload)
+        except (TypeError, ValueError):
+            return
+        if not isinstance(event, dict):
+            return
+        kind = event.get("type")
+        if kind == "response.output_text.delta":
+            text = event.get("delta")
+            name = "delta"
+        elif kind == "response.output_text.done":
+            text = event.get("text")
+            name = "done"
+        else:
+            return
+        if not isinstance(text, str):
+            return
+        if name == "done":
+            self.seen_done = True
+        truncated = len(text) > CONTENT_SEGMENT_MAX
+        _write_content_record(name, text=text, port=self.port, truncated=truncated)
 
 
 def log(msg):
@@ -390,26 +558,45 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream_back(self, resp_headers, prelude, conn, resp):
         self.send_response(200)
-        ctype = resp_headers.get("Content-Type") or "text/event-stream"
+        ctype = next(
+            (v for k, v in resp_headers.items() if k.lower() == "content-type"),
+            "text/event-stream",
+        )
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
         self.end_headers()
         self.close_connection = True
+        address = getattr(self, "client_address", None)
+        client_port = (
+            address[1]
+            if isinstance(address, (tuple, list)) and len(address) > 1
+            else 0
+        )
+        # The endpoint normally returns SSE, but a successful JSON response is
+        # still possible.  Do not create content markers for non-SSE traffic.
+        content = ContentCapture(
+            client_port,
+            enabled=("text/event-stream" in str(ctype).lower()),
+        )
+        content.start()
         # Once any event is committed, never retry or discard later data. The
         # client owns recovery after that point, including partial tool output.
         try:
+            content.feed(prelude)
             self.wfile.write(prelude)
             self.wfile.flush()
             while True:
                 chunk = resp.read1(65536) if hasattr(resp, "read1") else resp.read(65536)
                 if not chunk:
                     break
+                content.feed(chunk)
                 self.wfile.write(chunk)
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
         finally:
+            content.finish()
             conn.close()
 
     def _send_simple(self, status, headers, data):
@@ -461,6 +648,11 @@ def main():
                    help="max seconds to hold the stream head while deciding to retry")
     p.add_argument("--timeout", type=float, default=600.0)
     p.add_argument("--log", default="")
+    p.add_argument(
+        "--content-log",
+        default="",
+        help="optional JSONL feed for response text deltas/done events (disabled by default)",
+    )
     p.add_argument("--identity-file", default="", help="local key for installer readiness verification")
     ARGS = p.parse_args()
     ARGS.identity_key = b""
