@@ -12,6 +12,17 @@ python relay\relay.py --port 8787 --log "$HOME\.codex-overload-fix\relay.log" --
 
 如果 relay 已由安装器作为后台服务运行，请把 `--content-log` 加到对应的 launcher/service 命令中，不要再启动第二个占用 8787 端口的 relay。当前安装器不会自动管理这个可选参数。
 
+Linux 服务器可以在安装时直接传入自定义上游和内容 feed：
+
+```bash
+bash scripts/install-linux.sh --linger --no-config \
+  --proxy http://127.0.0.1:8890 \
+  --upstream api.example.com/v1 \
+  --content-log "$HOME/.local/state/codex-overload-fix/content-feed.jsonl"
+```
+
+`--no-config` 会保留 Codex 配置不变；自定义 provider 需要由管理员按实际 API 的认证方式手动指向 `http://127.0.0.1:8787`。
+
 启动 dashboard（从仓库根目录执行；脚本会自动寻找 Python 3.9+）：
 
 ```powershell

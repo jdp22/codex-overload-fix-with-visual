@@ -231,7 +231,7 @@ bash scripts/install-linux.sh
 
 然后它会把 Codex 指到中继上，只改 `config.toml` 里属于本项目的两处，并备份原文件；`uninstall-linux.sh` 会逐字节恢复。
 
-可选参数：`--port`、`--proxy`、`--python-path`、`--state-dir`、`--no-autostart`、`--no-config`、`--dry-run`（只打印 unit，什么都不改），另外多一个 `--linger`。
+可选参数：`--port`、`--proxy`、`--upstream`、`--content-log`、`--python-path`、`--state-dir`、`--no-autostart`、`--no-config`、`--dry-run`（只打印 unit，什么都不改），另外多一个 `--linger`。`--upstream` 和 `--content-log` 适合服务器上的自定义 API；内容捕获仍然是 opt-in。
 
 ```bash
 bash scripts/install-linux.sh --dry-run        # 先看一眼

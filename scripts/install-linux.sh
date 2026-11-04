@@ -13,6 +13,8 @@ set -euo pipefail
 
 PORT=8787
 PROXY=""
+UPSTREAM="chatgpt.com/backend-api/codex"
+CONTENT_LOG=""
 PYTHON_PATH=""
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/codex-overload-fix"
 NO_AUTOSTART=0
@@ -34,6 +36,8 @@ usage: install-linux.sh [options]
 
   --port PORT         Local port for the relay (default 8787)
   --proxy URL         Upstream proxy, e.g. http://127.0.0.1:7890
+  --upstream HOST/PATH Upstream API target (default chatgpt.com/backend-api/codex)
+  --content-log PATH  Opt-in JSONL feed of response text deltas
   --python-path PATH  Use this interpreter instead of the first python3 on PATH
   --state-dir DIR     Where the log lives
   --linger            Enable lingering so the relay survives logout
@@ -48,6 +52,8 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --port)         [ $# -ge 2 ] || die "--port needs a value";         PORT="$2"; shift 2 ;;
         --proxy)        [ $# -ge 2 ] || die "--proxy needs a value";        PROXY="$2"; shift 2 ;;
+        --upstream)     [ $# -ge 2 ] || die "--upstream needs a value";     UPSTREAM="$2"; shift 2 ;;
+        --content-log)  [ $# -ge 2 ] || die "--content-log needs a value";  CONTENT_LOG="$2"; shift 2 ;;
         --python-path)  [ $# -ge 2 ] || die "--python-path needs a value";  PYTHON_PATH="$2"; shift 2 ;;
         --state-dir)    [ $# -ge 2 ] || die "--state-dir needs a value";    STATE_DIR="$2"; shift 2 ;;
         --linger)       LINGER=1; shift ;;
@@ -107,8 +113,14 @@ relay_argv() {
     ARGV=("$PYTHON_PATH" "$RELAY" --port "$PORT" --log "$LOG_PATH"
           --max-attempts 30 --backoff-base 1 --backoff-max 8
           --total-budget 300 --commit-deadline 120 --identity-file "$IDENTITY_FILE")
+    if [ "$UPSTREAM" != "chatgpt.com/backend-api/codex" ]; then
+        ARGV+=(--upstream "$UPSTREAM")
+    fi
     if [ -n "$PROXY" ]; then
         ARGV+=(--proxy "$PROXY")
+    fi
+    if [ -n "$CONTENT_LOG" ]; then
+        ARGV+=(--content-log "$CONTENT_LOG")
     fi
 }
 
@@ -160,6 +172,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "unit:      $UNIT_PATH"
     say "service:   $SERVICE"
     say "proxy:     ${PROXY:-(none)}"
+    say "upstream:  $UPSTREAM"
+    say "content:   ${CONTENT_LOG:-(disabled)}"
     say ""
     if [ "$NO_CONFIG" -eq 1 ]; then
         say "config:    not edited (--no-config)"

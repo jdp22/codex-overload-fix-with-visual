@@ -231,7 +231,7 @@ It registers the relay as a **systemd `--user`** service (`~/.config/systemd/use
 
 It then points Codex at the relay, editing only this project's two entries in `config.toml` and backing up the original. `uninstall-linux.sh` restores it byte for byte.
 
-Options: `--port`, `--proxy`, `--python-path`, `--state-dir`, `--no-autostart`, `--no-config`, `--dry-run` (prints the unit and changes nothing), plus `--linger`.
+Options: `--port`, `--proxy`, `--upstream`, `--content-log`, `--python-path`, `--state-dir`, `--no-autostart`, `--no-config`, `--dry-run` (prints the unit and changes nothing), plus `--linger`. `--upstream` and `--content-log` are useful for custom API deployments; content capture remains opt-in.
 
 ```bash
 bash scripts/install-linux.sh --dry-run        # inspect first
