@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Codex Relay · 实时监控</title>
+  <style>
+    :root { color-scheme: dark; --bg:#09111f; --panel:#101b2d; --panel2:#15243a; --line:#263b58; --text:#e8f0fb; --muted:#8da2bd; --green:#45d39c; --amber:#ffc66b; --red:#ff7d8a; --blue:#79a9ff; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:radial-gradient(circle at 15% -10%, #17355c 0, transparent 36%), var(--bg); color:var(--text); font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+    .wrap { max-width:1280px; margin:0 auto; padding:28px 22px 42px; }
+    header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:22px; }
+    h1 { margin:0 0 5px; font-size:27px; letter-spacing:.2px; }
+    .sub { color:var(--muted); }
+    .status { display:inline-flex; align-items:center; gap:9px; padding:8px 13px; border:1px solid var(--line); border-radius:99px; background:#0d192a; color:var(--green); white-space:nowrap; }
+    .status.warn { color:var(--amber); }
+    .dot { width:9px; height:9px; border-radius:50%; background:currentColor; box-shadow:0 0 12px currentColor; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:13px; }
+    .card { background:linear-gradient(145deg,rgba(21,36,58,.95),rgba(12,23,40,.95)); border:1px solid var(--line); border-radius:15px; padding:17px 18px; min-width:0; box-shadow:0 16px 36px rgba(0,0,0,.12); }
+    .label { color:var(--muted); font-size:12px; }
+    .value { margin-top:5px; font-size:27px; font-weight:700; letter-spacing:-.5px; }
+    .hint { margin-top:4px; color:var(--muted); font-size:12px; }
+    .wide { grid-column:span 2; }
+    .panel-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+    .panel-head h2 { margin:0; font-size:16px; }
+    .tag { color:var(--muted); font-size:12px; }
+    .chart { height:215px; width:100%; display:block; }
+    .health { display:grid; gap:11px; }
+    .health-row { display:flex; align-items:center; justify-content:space-between; padding:10px 11px; border:1px solid var(--line); border-radius:10px; background:rgba(8,17,30,.45); }
+    .health-name { display:flex; align-items:center; gap:9px; }
+    .health-led { width:8px; height:8px; border-radius:50%; background:var(--red); }
+    .health-led.ok { background:var(--green); box-shadow:0 0 9px var(--green); }
+    .health-address { color:var(--muted); font:12px ui-monospace,SFMono-Regular,Consolas,monospace; }
+    .table-wrap { overflow:auto; max-height:355px; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th,td { padding:9px 8px; border-bottom:1px solid rgba(38,59,88,.7); text-align:left; white-space:nowrap; }
+    th { color:var(--muted); font-weight:500; position:sticky; top:0; background:var(--panel); }
+    .pill { display:inline-flex; padding:2px 7px; border-radius:99px; font-size:11px; border:1px solid var(--line); }
+    .pill.success { color:var(--green); border-color:rgba(69,211,156,.35); }
+    .pill.retry { color:var(--amber); border-color:rgba(255,198,107,.35); }
+    .pill.failure { color:var(--red); border-color:rgba(255,125,138,.35); }
+    .pill.pending { color:var(--blue); border-color:rgba(121,169,255,.35); }
+    .content-list { display:grid; gap:10px; max-height:430px; overflow:auto; }
+    .content-item { border:1px solid var(--line); border-radius:11px; background:rgba(8,17,30,.5); padding:11px 12px; }
+    .content-meta { display:flex; align-items:center; gap:9px; flex-wrap:wrap; color:var(--muted); font-size:12px; }
+    .content-text { margin-top:8px; color:#dfeafa; white-space:pre-wrap; overflow-wrap:anywhere; max-height:180px; overflow:auto; font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    .empty { padding:34px 0; color:var(--muted); text-align:center; }
+    footer { margin-top:17px; color:var(--muted); font-size:12px; display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+    code { color:#c5d8f4; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
+    @media (max-width:900px) { .grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .wide { grid-column:span 2; } }
+    @media (max-width:580px) { .wrap { padding:20px 13px 30px; } header { display:block; } .status { margin-top:15px; } .grid { grid-template-columns:1fr; } .wide { grid-column:span 1; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div><h1>Codex Relay 实时监控</h1><div class="sub">本地中继请求、成功率与重试情况</div></div>
+      <div id="status" class="status"><span class="dot"></span><span>连接中…</span></div>
+    </header>
+
+    <section class="grid" aria-live="polite">
+      <article class="card"><div class="label">请求数</div><div id="requests" class="value">—</div><div id="requestsHint" class="hint">最近 60 分钟</div></article>
+      <article class="card"><div class="label">成功率</div><div id="successRate" class="value">—</div><div id="successHint" class="hint">成功 / 已结束请求</div></article>
+      <article class="card"><div class="label">自动重试</div><div id="retries" class="value">—</div><div id="retryHint" class="hint">重试频率 —</div></article>
+      <article class="card"><div class="label">当前处理中</div><div id="pending" class="value">—</div><div id="pendingHint" class="hint">尚未结束的请求</div></article>
+
+      <article class="card wide"><div class="panel-head"><h2>请求趋势</h2><span id="trendHint" class="tag">每分钟</span></div><canvas id="chart" class="chart"></canvas></article>
+      <article class="card"><div class="panel-head"><h2>链路健康</h2><span id="lastLog" class="tag">—</span></div><div class="health"><div class="health-row"><div class="health-name"><span id="relayLed" class="health-led"></span><span>中继</span></div><span id="relayAddress" class="health-address">—</span></div><div class="health-row"><div class="health-name"><span id="proxyLed" class="health-led"></span><span>代理</span></div><span id="proxyAddress" class="health-address">—</span></div></div></article>
+
+      <article class="card wide"><div class="panel-head"><h2>实时事件</h2><span class="tag">自动刷新 2 秒</span></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>事件</th><th>详情</th><th>连接</th></tr></thead><tbody id="events"><tr><td colspan="4" class="empty">等待日志…</td></tr></tbody></table></div></article>
+      <article class="card"><div class="panel-head"><h2>重试原因</h2><span class="tag">当前窗口</span></div><div class="table-wrap"><table><thead><tr><th>原因</th><th>次数</th></tr></thead><tbody id="reasons"><tr><td colspan="2" class="empty">暂无重试</td></tr></tbody></table></div></article>
+      <article class="card wide"><div class="panel-head"><h2>最近响应内容</h2><span id="contentHint" class="tag">等待内容流…</span></div><div id="contentFeed" class="content-list"><div class="empty">等待 relay 捕获文本响应…</div></div></article>
+      <article class="card wide"><div class="panel-head"><h2>最近请求</h2><span class="tag">最近 30 条</span></div><div class="table-wrap"><table><thead><tr><th>开始时间</th><th>大小</th><th>模型</th><th>尝试</th><th>状态</th></tr></thead><tbody id="requestsTable"><tr><td colspan="5" class="empty">等待日志…</td></tr></tbody></table></div></article>
+    </section>
+    <footer><span id="logPath">日志：—</span><span id="updated">更新时间：—</span></footer>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fmt = (value, digits=1) => value == null ? '—' : Number(value).toFixed(digits);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    function setStatus(health) { const el=$('status'); const good=health?.relay; el.classList.toggle('warn', !good); el.innerHTML=`<span class="dot"></span><span>${good?'中继在线':'中继不可达'}</span>`; }
+    function renderHealth(h, age) { $('relayLed').classList.toggle('ok',!!h.relay); $('proxyLed').classList.toggle('ok',!!h.proxy); $('relayAddress').textContent=h.relay_address; $('proxyAddress').textContent=h.proxy_address; $('lastLog').textContent=age==null?'无日志':`最后日志 ${age < 5 ? '刚刚' : Math.round(age)+' 秒前'}`; }
+    function renderEvents(rows) { $('events').innerHTML = rows?.length ? rows.slice(0,40).map(e=>`<tr><td>${esc(e.time.slice(11))}</td><td><span class="pill ${esc(e.kind)}">${esc(e.label)}</span></td><td>${esc(e.detail)}</td><td><code>${esc(e.port)}</code></td></tr>`).join('') : '<tr><td colspan="4" class="empty">等待日志…</td></tr>'; }
+    function renderReasons(data) { const names={overload:'上游过载',connection:'连接抖动',http:'HTTP 错误',other:'其他'}; const rows=Object.entries(data||{}).sort((a,b)=>b[1]-a[1]); $('reasons').innerHTML=rows.length?rows.map(([k,v])=>`<tr><td>${names[k]||esc(k)}</td><td>${v}</td></tr>`).join(''):'<tr><td colspan="2" class="empty">暂无重试</td></tr>'; }
+    function formatBytes(value) { const n=Number(value||0); if(n>=1024*1024) return (n/1024/1024).toFixed(1)+' MB'; if(n>=1024) return (n/1024).toFixed(1)+' KB'; return n+' B'; }
+    function renderRequests(rows) { const names={success:'成功',pending:'处理中',failed:'失败',abandoned:'已取消'}; $('requestsTable').innerHTML=rows?.length ? rows.map(r=>`<tr><td>${esc((r.started_at||'').replace('T',' '))}</td><td>${formatBytes(r.body_bytes)}</td><td><code>${esc(r.model||'—')}</code></td><td>${r.attempts||0}${r.retries?` <span class="tag">(+${r.retries})</span>`:''}</td><td><span class="pill ${esc(r.status)}">${names[r.status]||esc(r.status)}</span></td></tr>`).join('') : '<tr><td colspan="5" class="empty">等待日志…</td></tr>'; }
+    function renderContent(feed) { const rows=feed?.streams||[]; $('contentHint').textContent=feed?.available ? `最近 ${rows.length} 条响应流` : '尚未启用内容捕获'; const names={streaming:'流式传输中',done:'已完成'}; $('contentFeed').innerHTML=rows.length ? rows.map(r=>`<article class="content-item"><div class="content-meta"><span class="pill ${r.status==='streaming'?'pending':'success'}">${names[r.status]||esc(r.status)}</span><span>${esc((r.last_at||'').replace('T',' '))}</span><code>连接 ${esc(r.port)}</code>${r.truncated?'<span>内容已截断</span>':''}</div><div class="content-text">${esc(r.text||'（尚未收到文本增量）')}</div></article>`).join('') : '<div class="empty">等待 relay 捕获文本响应…</div>'; }
+    function drawChart(rows) { const canvas=$('chart'), rect=canvas.getBoundingClientRect(), dpr=window.devicePixelRatio||1; canvas.width=rect.width*dpr; canvas.height=rect.height*dpr; const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr); const w=rect.width,h=rect.height,p={l:34,r:10,t:12,b:24}; ctx.clearRect(0,0,w,h); const max=Math.max(1,...rows.map(r=>Math.max(r.requests,r.retries,r.failures))); ctx.strokeStyle='rgba(141,162,189,.18)'; ctx.fillStyle='#8da2bd'; ctx.font='11px ui-sans-serif'; for(let i=0;i<4;i++){ const y=p.t+(h-p.t-p.b)*i/3; ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke();ctx.fillText(String(Math.round(max*(3-i)/3)),4,y+4); } const x=i=>p.l+(w-p.l-p.r)*(rows.length<=1?0:i/(rows.length-1)); const y=v=>p.t+(h-p.t-p.b)*(1-v/max); const line=(key,color)=>{ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();rows.forEach((r,i)=>{const xx=x(i),yy=y(r[key]);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.stroke()}; line('requests','#79a9ff');line('successes','#45d39c');line('retries','#ffc66b'); ctx.fillStyle='#8da2bd';ctx.fillText('请求',p.l,h-5);ctx.fillStyle='#45d39c';ctx.fillText('成功',p.l+44,h-5);ctx.fillStyle='#ffc66b';ctx.fillText('重试',p.l+88,h-5); }
+    async function refresh() { try { const res=await fetch('/api/metrics',{cache:'no-store'}); if(!res.ok) throw new Error(res.status); const d=await res.json(), s=d.summary||{}; setStatus(d.health); renderHealth(d.health,d.last_log_age_seconds); $('requests').textContent=s.requests ?? '—'; $('requestsHint').textContent=d.window_label; $('successRate').textContent=s.success_rate==null?'—':fmt(s.success_rate)+'%'; $('successHint').textContent=`${s.successful||0} 成功 / ${(s.successful||0)+(s.failed||0)} 已结束`; $('retries').textContent=s.retries ?? '—'; $('retryHint').textContent=`平均每请求 ${s.retries_per_request==null?'—':fmt(s.retries_per_request,2)} 次`; $('pending').textContent=s.pending ?? '—'; $('pendingHint').textContent=`${s.attempts||0} 次尝试 · ${s.failed||0} 失败`; $('trendHint').textContent=d.window_label+' · 每分钟'; renderEvents(d.events); renderReasons(d.retry_reasons); renderContent(d.content); renderRequests(d.requests_detail); drawChart(d.trend||[]); $('logPath').textContent='日志：'+d.log_path; $('updated').textContent='更新时间：'+d.generated_at.replace('T',' '); } catch (err) { const el=$('status');el.classList.add('warn');el.innerHTML='<span class="dot"></span><span>面板连接失败</span>'; } }
+    refresh(); setInterval(refresh,2000); window.addEventListener('resize',()=>refresh());
+  </script>
+</body>
+</html>
+
