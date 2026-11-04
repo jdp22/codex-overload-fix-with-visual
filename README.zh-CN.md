@@ -233,6 +233,15 @@ bash scripts/install-linux.sh
 
 可选参数：`--port`、`--proxy`、`--upstream`、`--content-log`、`--python-path`、`--state-dir`、`--no-autostart`、`--no-config`、`--dry-run`（只打印 unit，什么都不改），另外多一个 `--linger`。`--upstream` 和 `--content-log` 适合服务器上的自定义 API；内容捕获仍然是 opt-in。
 
+Dashboard 也可以注册成 user service，适合远程服务器：
+
+```bash
+bash scripts/install-dashboard-linux.sh --linger \
+  --content-log "$HOME/.local/state/codex-overload-fix/content-feed.jsonl"
+```
+
+通过 SSH 隧道访问：`ssh -N -L 8899:127.0.0.1:8899 user@server`，然后打开 <http://127.0.0.1:8899/>。卸载 dashboard：`bash scripts/uninstall-dashboard-linux.sh`。
+
 ```bash
 bash scripts/install-linux.sh --dry-run        # 先看一眼
 bash scripts/install-linux.sh --proxy http://127.0.0.1:7890

@@ -233,6 +233,15 @@ It then points Codex at the relay, editing only this project's two entries in `c
 
 Options: `--port`, `--proxy`, `--upstream`, `--content-log`, `--python-path`, `--state-dir`, `--no-autostart`, `--no-config`, `--dry-run` (prints the unit and changes nothing), plus `--linger`. `--upstream` and `--content-log` are useful for custom API deployments; content capture remains opt-in.
 
+The dashboard can also run as a user service on a remote Linux host:
+
+```bash
+bash scripts/install-dashboard-linux.sh --linger \
+  --content-log "$HOME/.local/state/codex-overload-fix/content-feed.jsonl"
+```
+
+Reach it through SSH tunnelling: `ssh -N -L 8899:127.0.0.1:8899 user@server`, then open <http://127.0.0.1:8899/>. Remove the dashboard service with `bash scripts/uninstall-dashboard-linux.sh`.
+
 ```bash
 bash scripts/install-linux.sh --dry-run        # inspect first
 bash scripts/install-linux.sh --proxy http://127.0.0.1:7890
