@@ -60,6 +60,14 @@ class RelayStartupTests(unittest.TestCase):
             finally:
                 server.server_close()
 
+    def test_required_proxy_refuses_direct_connection(self):
+        relay.ARGS = types.SimpleNamespace(
+            upstream_host='example.invalid', upstream_port=443,
+            upstream_scheme='https', proxy=None, require_proxy=True,
+        )
+        with self.assertRaisesRegex(OSError, 'proxy is required'):
+            relay.upstream_connection(1)
+
 
 class RelayTests(unittest.TestCase):
     @classmethod
@@ -195,3 +203,4 @@ class UnixInstallerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
