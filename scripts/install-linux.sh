@@ -13,6 +13,7 @@ set -euo pipefail
 
 PORT=8787
 PROXY=""
+REQUIRE_PROXY=0
 UPSTREAM="chatgpt.com/backend-api/codex"
 CONTENT_LOG=""
 PYTHON_PATH=""
@@ -36,6 +37,7 @@ usage: install-linux.sh [options]
 
   --port PORT         Local port for the relay (default 8787)
   --proxy URL         Upstream proxy, e.g. http://127.0.0.1:7890
+  --require-proxy     Fail closed if the explicit proxy is unavailable or omitted
   --upstream HOST/PATH Upstream API target (default chatgpt.com/backend-api/codex)
   --content-log PATH  Opt-in JSONL feed of response text deltas
   --python-path PATH  Use this interpreter instead of the first python3 on PATH
@@ -52,6 +54,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --port)         [ $# -ge 2 ] || die "--port needs a value";         PORT="$2"; shift 2 ;;
         --proxy)        [ $# -ge 2 ] || die "--proxy needs a value";        PROXY="$2"; shift 2 ;;
+        --require-proxy) REQUIRE_PROXY=1; shift ;;
         --upstream)     [ $# -ge 2 ] || die "--upstream needs a value";     UPSTREAM="$2"; shift 2 ;;
         --content-log)  [ $# -ge 2 ] || die "--content-log needs a value";  CONTENT_LOG="$2"; shift 2 ;;
         --python-path)  [ $# -ge 2 ] || die "--python-path needs a value";  PYTHON_PATH="$2"; shift 2 ;;
@@ -116,6 +119,10 @@ relay_argv() {
     if [ "$UPSTREAM" != "chatgpt.com/backend-api/codex" ]; then
         ARGV+=(--upstream "$UPSTREAM")
     fi
+    if [ "$REQUIRE_PROXY" -eq 1 ]; then
+        [ -n "$PROXY" ] || die "--require-proxy needs --proxy"
+        ARGV+=(--require-proxy)
+    fi
     if [ -n "$PROXY" ]; then
         ARGV+=(--proxy "$PROXY")
     fi
@@ -172,6 +179,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "unit:      $UNIT_PATH"
     say "service:   $SERVICE"
     say "proxy:     ${PROXY:-(none)}"
+    say "require proxy: $REQUIRE_PROXY"
     say "upstream:  $UPSTREAM"
     say "content:   ${CONTENT_LOG:-(disabled)}"
     say ""

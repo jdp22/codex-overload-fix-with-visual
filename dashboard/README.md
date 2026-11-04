@@ -15,7 +15,7 @@ python relay\relay.py --port 8787 --log "$HOME\.codex-overload-fix\relay.log" --
 Linux 服务器可以在安装时直接传入自定义上游和内容 feed：
 
 ```bash
-bash scripts/install-linux.sh --linger --no-config \
+bash scripts/install-linux.sh --linger --no-config --require-proxy \
   --proxy http://127.0.0.1:8890 \
   --upstream api.example.com/v1 \
   --content-log "$HOME/.local/state/codex-overload-fix/content-feed.jsonl"

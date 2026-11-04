@@ -257,6 +257,8 @@ ARGS = None
 def upstream_connection(timeout):
     host = ARGS.upstream_host
     port = ARGS.upstream_port
+    if getattr(ARGS, "require_proxy", False) and not ARGS.proxy:
+        raise OSError("proxy is required; refusing direct upstream connection")
     if ARGS.proxy:
         phost, pport = ARGS.proxy
         conn = http.client.HTTPSConnection(phost, pport, timeout=timeout)
@@ -640,6 +642,11 @@ def main():
     p.add_argument("--port", type=int, default=8787)
     p.add_argument("--upstream", default="chatgpt.com/backend-api/codex")
     p.add_argument("--proxy", default="", help="e.g. http://127.0.0.1:7897")
+    p.add_argument(
+        "--require-proxy",
+        action="store_true",
+        help="fail closed unless an explicit HTTP proxy is configured",
+    )
     p.add_argument("--max-attempts", type=int, default=30)
     p.add_argument("--total-budget", type=float, default=300.0)
     p.add_argument("--backoff-base", type=float, default=1.0)
@@ -675,9 +682,15 @@ def main():
     if ARGS.proxy:
         host, _, port = ARGS.proxy.replace("http://", "").partition(":")
         ARGS.proxy = (host, int(port or 80))
+    if ARGS.require_proxy and not ARGS.proxy:
+        p.error("--require-proxy needs --proxy; refusing to start without a proxy")
 
     srv = LocalRelayServer(("127.0.0.1", ARGS.port), Handler)
-    log(f"relay listening on 127.0.0.1:{ARGS.port} -> {ARGS.upstream_scheme}://{ARGS.upstream} via {ARGS.proxy}")
+    log(
+        f"relay listening on 127.0.0.1:{ARGS.port} -> "
+        f"{ARGS.upstream_scheme}://{ARGS.upstream} via {ARGS.proxy} "
+        f"require_proxy={ARGS.require_proxy}"
+    )
     srv.daemon_threads = True
     try:
         srv.serve_forever()

@@ -231,7 +231,7 @@ bash scripts/install-linux.sh
 
 然后它会把 Codex 指到中继上，只改 `config.toml` 里属于本项目的两处，并备份原文件；`uninstall-linux.sh` 会逐字节恢复。
 
-可选参数：`--port`、`--proxy`、`--upstream`、`--content-log`、`--python-path`、`--state-dir`、`--no-autostart`、`--no-config`、`--dry-run`（只打印 unit，什么都不改），另外多一个 `--linger`。`--upstream` 和 `--content-log` 适合服务器上的自定义 API；内容捕获仍然是 opt-in。
+可选参数：`--port`、`--proxy`、`--require-proxy`、`--upstream`、`--content-log`、`--python-path`、`--state-dir`、`--no-autostart`、`--no-config`、`--dry-run`（只打印 unit，什么都不改），另外多一个 `--linger`。`--require-proxy` 会在没有显式代理时拒绝启动，并在代理隧道失败时 fail closed，避免网络波动触发直连；`--upstream` 和 `--content-log` 适合服务器上的自定义 API；内容捕获仍然是 opt-in。
 
 Dashboard 也可以注册成 user service，适合远程服务器：
 
