@@ -515,6 +515,31 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send_simple(404, {"Content-Type": "text/plain"}, b"not found\n")
             return
+        # The built-in OpenAI provider probes the Responses WebSocket endpoint
+        # with an HTTP Upgrade request before falling back to HTTP/SSE.  This
+        # relay intentionally exposes only HTTP/SSE, so reject that probe
+        # locally instead of sending it through the upstream proxy on every
+        # retry.  The client still performs its normal fallback, but the
+        # failure is immediate and never spends upstream quota or proxy time.
+        is_websocket_probe = (
+            self.command == "GET"
+            and parsed.path.split("?")[0].endswith("/responses")
+            and (
+                "upgrade" in (self.headers.get("Upgrade") or "").lower()
+                or "upgrade" in (self.headers.get("Connection") or "").lower()
+            )
+        )
+        if is_websocket_probe:
+            body = b'{"detail":"Method Not Allowed"}\n'
+            self._send_simple(
+                405,
+                {"Allow": "POST", "Content-Type": "application/json"},
+                body,
+            )
+            log(
+                f"[{self.client_address[1]}] GET {self.path} -> 405 websocket probe"
+            )
+            return
         path = self.path
         upstream_path = ARGS.upstream_prefix + path
         body = read_request_body(self)

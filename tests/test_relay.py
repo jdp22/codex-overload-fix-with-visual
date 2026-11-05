@@ -100,6 +100,20 @@ class RelayTests(unittest.TestCase):
         conn.close()
         return result
 
+    def test_websocket_probe_is_rejected_locally(self):
+        conn = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=5)
+        conn.request('GET', '/responses', headers={
+            'Connection': 'Upgrade',
+            'Upgrade': 'websocket',
+        })
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        self.assertEqual(resp.status, 405)
+        self.assertEqual(resp.getheader('Allow'), 'POST')
+        self.assertIn(b'Method Not Allowed', body)
+        self.assertEqual(MockUpstream.calls, 0)
+
     def test_retries_overload_before_output(self):
         overload = event({'type': 'error', 'error': {'code': 'server_is_overloaded'}})
         ok = event({'type': 'response.output_text.delta', 'delta': 'test'})
