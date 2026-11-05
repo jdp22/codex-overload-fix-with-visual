@@ -108,3 +108,4 @@ PY
 done
 
 die "dashboard did not start; inspect: systemctl --user status $SERVICE"
+

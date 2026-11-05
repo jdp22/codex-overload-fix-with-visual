@@ -36,3 +36,5 @@ python dashboard\server.py --log "$HOME\.codex-overload-fix\relay.log" --port 88
 ```
 
 打开 <http://127.0.0.1:8899/>。页面每 2 秒轮询 `/api/metrics`，显示请求数、成功率、处理中请求、重试次数和原因、按分钟趋势、最近事件及 relay/proxy TCP 健康状态。
+
+“最近请求”表会记录每条请求的模型、`reasoning effort`、尝试次数、从触发到结束的总耗时，以及文本流的输出速度（字符/秒）。输出速度只在启用 `--content-log` 且收到文本响应时可用；没有文本增量的请求显示为 `—`。
