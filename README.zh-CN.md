@@ -277,7 +277,16 @@ request_max_retries = 10
 
 重启 Codex。跑一个回合时看 `127.0.0.1:8787` 有没有 ESTABLISHED 连接，就能确认中继在工作。
 
-> `openai` 是保留 provider id，不能被覆盖，所以这里定义了一个新的。
+安装器使用 `openai-retry` 这个自定义 provider，是为了声明 HTTP-only 传输，避免内置 provider 对当前只支持 HTTP/SSE 的中继做 WebSocket 预连接。真正负责过载重试的是中继本身；这个名字不是 OpenAI 服务名，认证也不依赖它。
+
+如果你希望旧 session 继续保持官方 `openai` provider 身份，并保留内置能力判断，可以改用内置 provider 加地址覆盖：
+
+```toml
+model_provider = "openai"
+openai_base_url = "http://127.0.0.1:8787"
+```
+
+迁移期间请保留现有的 `[model_providers.openai-retry]` 表，这样之前创建的 session 仍能解析。`openai` 不能写成自定义的 `[model_providers.openai]` 表；要把内置 provider 指向中继，官方支持的写法是 `openai_base_url`。内置路径会先尝试 WebSocket，而当前中继只接受 HTTP/SSE，因此可能会多等几秒再自动回落到 HTTP。
 
 ### 卸载
 

@@ -277,7 +277,16 @@ request_max_retries = 10
 
 Restart Codex. You can confirm the shim is in the path by checking that `127.0.0.1:8787` has established connections while a turn is running.
 
-> `openai` is a reserved provider id and cannot be overridden. That is why this defines a new one.
+The installer uses `openai-retry` as a custom provider so it can advertise an HTTP-only transport and avoid a WebSocket preflight against a relay that currently speaks HTTP/SSE. The relay itself performs the overload retries; the custom name is not an OpenAI service and is not required for authentication.
+
+If you need sessions to keep the built-in OpenAI provider identity and its native capability handling, use the built-in provider with an endpoint override instead:
+
+```toml
+model_provider = "openai"
+openai_base_url = "http://127.0.0.1:8787"
+```
+
+Keep the existing `[model_providers.openai-retry]` table while migrating so sessions created during the earlier setup can still be resumed. The built-in `openai` id cannot be defined as a custom `[model_providers.openai]` table; `openai_base_url` is the supported way to point that built-in provider at the relay. The built-in path may spend a few seconds falling back from its WebSocket preflight because this relay currently accepts HTTP/SSE only.
 
 ### Undo
 

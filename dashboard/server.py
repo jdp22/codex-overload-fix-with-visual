@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Small stdlib-only dashboard for the local overload-fix relay.
 
-The dashboard intentionally reads only relay.log.  It never reads request
-bodies, headers, or credentials.  Start it with::
+    The dashboard reads relay.log and the optional bounded content feed.  It
+    never reads request bodies, headers, or credentials.  Start it with::
 
     python dashboard/server.py --log C:\\Users\\me\\.codex-overload-fix\\relay.log
 
@@ -31,6 +31,7 @@ INDEX_FILE = ROOT / "index.html"
 TIMESTAMP = re.compile(r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (?P<msg>.*)$")
 REQUEST = re.compile(r"\[(?P<port>\d+)\] (?P<method>\S+) (?P<path>\S+) \((?P<body>\d+)B\)")
 MODEL_FIELD = re.compile(r"\bmodel=(?P<model>[^ ]+)")
+EFFORT_FIELD = re.compile(r"\b(?:effort|reasoning_effort)=(?P<effort>[^ ]+)")
 ATTEMPT_OK = re.compile(r"\[(?P<port>\d+)\] attempt (?P<attempt>\d+): ok, streaming")
 ATTEMPT_PASS = re.compile(r"\[(?P<port>\d+)\] attempt (?P<attempt>\d+): upstream (?P<status>\d+), passthrough")
 RETRY = re.compile(r"\[(?P<port>\d+)\] attempt (?P<attempt>\d+): retryable \((?P<reason>.*)\)")
@@ -116,9 +117,20 @@ def load_content(content_path: Path, cutoff: datetime) -> dict[str, Any]:
                 "status": "streaming",
                 "text": "",
                 "truncated": False,
+                "model": "",
+                "reasoning_effort": "",
+                "text_chars": 0,
+                "saw_delta": False,
+                "_started_dt": dt,
+                "_last_dt": dt,
             },
         )
+        item["_last_dt"] = dt
         item["last_at"] = dt.isoformat(timespec="seconds")
+        for key in ("model", "reasoning_effort"):
+            value = row.get(key)
+            if isinstance(value, str) and value:
+                item[key] = value
         if event == "start":
             item["started_at"] = dt.isoformat(timespec="seconds")
             item["status"] = "streaming"
@@ -126,20 +138,58 @@ def load_content(content_path: Path, cutoff: datetime) -> dict[str, Any]:
             text = row.get("text")
             if isinstance(text, str):
                 item["text"] = (item["text"] + text)[-12000:]
+                item["text_chars"] += len(text)
+                item["saw_delta"] = True
             item["truncated"] = bool(item["truncated"] or row.get("truncated"))
             item["status"] = "streaming"
         elif event == "done":
             text = row.get("text")
             if not item["text"] and isinstance(text, str):
                 item["text"] = text[-12000:]
+            if not item["saw_delta"] and isinstance(text, str):
+                item["text_chars"] = len(text)
             item["truncated"] = bool(item["truncated"] or row.get("truncated"))
             item["status"] = "done"
+
+    # Keep a compact per-port index for the request table. It is removed from
+    # the public content payload below because the browser only needs the
+    # visible response cards.
+    port_stats: dict[str, dict[str, Any]] = {}
+    for port, item in streams.items():
+        started = item.get("_started_dt") or parse_content_time(item.get("started_at", ""))
+        finished = item.get("_last_dt") or parse_content_time(item.get("last_at", ""))
+        elapsed = None
+        if started and finished:
+            elapsed = max(0.0, (finished - started).total_seconds())
+        chars = int(item.get("text_chars") or 0)
+        port_stats[port] = {
+            "reasoning_effort": item.get("reasoning_effort", ""),
+            "output_chars": chars,
+            "stream_seconds": round(elapsed, 3) if elapsed is not None else None,
+            "output_rate_chars_per_second": round(chars / elapsed, 1)
+            if elapsed and chars
+            else None,
+        }
+        item["output_chars"] = chars
+        item["stream_seconds"] = round(elapsed, 3) if elapsed is not None else None
+        item["output_rate_chars_per_second"] = (
+            round(chars / elapsed, 1) if elapsed and chars else None
+        )
+
+    for item in streams.values():
+        item.pop("_started_dt", None)
+        item.pop("_last_dt", None)
 
     # Keep visible text ahead of empty tool/reasoning-only streams so the
     # content panel remains useful while a busy client emits many non-text
     # responses.
     rows = sorted(streams.values(), key=lambda row: (bool(row["text"]), row["last_at"]), reverse=True)
-    return {"available": True, "log_path": str(content_path), "streams": rows[:20]}
+    return {
+        "available": True,
+        "log_path": str(content_path),
+        "streams": rows[:20],
+        "_port_stats": port_stats,
+    }
 
 
 def metrics(
@@ -201,10 +251,12 @@ def metrics(
             port = m.group("port")
             body = int(m.group("body"))
             model_match = MODEL_FIELD.search(msg)
+            effort_match = EFFORT_FIELD.search(msg)
             req = {
                 "port": port,
                 "body_bytes": body,
                 "model": model_match.group("model") if model_match else "",
+                "reasoning_effort": effort_match.group("effort") if effort_match else "",
                 "started_at": dt.isoformat(timespec="seconds"),
                 "attempts": 0,
                 "retries": 0,
@@ -326,6 +378,31 @@ def metrics(
         row = trend.get(key, {"requests": 0, "successes": 0, "retries": 0, "failures": 0})
         trend_rows.append({"time": datetime.fromtimestamp(key).isoformat(timespec="minutes"), **row})
 
+    request_rows = []
+    content_stats = content.pop("_port_stats", {})
+    for item in reversed(requests[-30:]):
+        row = dict(item)
+        stream = content_stats.get(item.get("port"), {})
+        if stream.get("reasoning_effort") and not row.get("reasoning_effort"):
+            row["reasoning_effort"] = stream["reasoning_effort"]
+        row["output_chars"] = stream.get("output_chars")
+        row["stream_seconds"] = stream.get("stream_seconds")
+        row["output_rate_chars_per_second"] = stream.get("output_rate_chars_per_second")
+        try:
+            started = datetime.fromisoformat(item.get("started_at", ""))
+        except (TypeError, ValueError):
+            started = None
+        try:
+            finished = datetime.fromisoformat(item.get("completed_at", "")) if item.get("completed_at") else now
+        except (TypeError, ValueError):
+            finished = now
+        row["duration_seconds"] = (
+            round(max(0.0, (finished - started).total_seconds()), 3)
+            if started and finished
+            else None
+        )
+        request_rows.append(row)
+
     return {
         "generated_at": now.isoformat(timespec="seconds"),
         "window_seconds": window,
@@ -358,7 +435,7 @@ def metrics(
         "retry_reasons": dict(retry_reasons),
         "served_models": dict(served_models),
         "trend": trend_rows,
-        "requests_detail": list(reversed(requests[-30:])),
+        "requests_detail": request_rows,
         "events": list(reversed(events)),
     }
 
@@ -449,3 +526,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

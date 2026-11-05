@@ -90,7 +90,9 @@ def _content_timestamp():
     ).replace("+00:00", "Z")
 
 
-def _write_content_record(event, text="", port=0, truncated=False):
+def _write_content_record(
+    event, text="", port=0, truncated=False, model="", reasoning_effort=""
+):
     """Append one safe, bounded record to the optional local JSONL feed.
 
     The record intentionally contains no request data, headers, event payload,
@@ -114,6 +116,10 @@ def _write_content_record(event, text="", port=0, truncated=False):
             "text": text,
             "truncated": bool(truncated),
         }
+        if isinstance(model, str) and model:
+            record["model"] = model[:120]
+        if isinstance(reasoning_effort, str) and reasoning_effort:
+            record["reasoning_effort"] = reasoning_effort[:40]
         encoded = (
             json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
         ).encode("utf-8")
@@ -163,6 +169,8 @@ class ContentCapture:
             self.port = 0
         self.pending = bytearray()
         self.seen_done = False
+        self.model = ""
+        self.reasoning_effort = ""
         path_enabled = bool(_content_log_path())
         self.enabled = (
             path_enabled
@@ -203,7 +211,12 @@ class ContentCapture:
         # Some interrupted/older streams do not emit response.output_text.done;
         # provide a terminal marker so a poller can close the current item.
         if not self.seen_done:
-            _write_content_record("done", port=self.port)
+            _write_content_record(
+                "done",
+                port=self.port,
+                model=self.model,
+                reasoning_effort=self.reasoning_effort,
+            )
 
     def _line(self, line):
         line = line.strip()
@@ -219,6 +232,17 @@ class ContentCapture:
         if not isinstance(event, dict):
             return
         kind = event.get("type")
+        response = event.get("response") or {}
+        if isinstance(response, dict):
+            model = response.get("model")
+            if isinstance(model, str) and model:
+                self.model = model
+            reasoning = response.get("reasoning") or {}
+            effort = reasoning.get("effort") if isinstance(reasoning, dict) else None
+            if not effort:
+                effort = response.get("reasoning_effort")
+            if isinstance(effort, str) and effort:
+                self.reasoning_effort = effort
         if kind == "response.output_text.delta":
             text = event.get("delta")
             name = "delta"
@@ -232,7 +256,14 @@ class ContentCapture:
         if name == "done":
             self.seen_done = True
         truncated = len(text) > CONTENT_SEGMENT_MAX
-        _write_content_record(name, text=text, port=self.port, truncated=truncated)
+        _write_content_record(
+            name,
+            text=text,
+            port=self.port,
+            truncated=truncated,
+            model=self.model,
+            reasoning_effort=self.reasoning_effort,
+        )
 
 
 def log(msg):
