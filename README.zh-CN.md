@@ -288,6 +288,14 @@ openai_base_url = "http://127.0.0.1:8787"
 
 迁移期间请保留现有的 `[model_providers.openai-retry]` 表，这样之前创建的 session 仍能解析。`openai` 不能写成自定义的 `[model_providers.openai]` 表；要把内置 provider 指向中继，官方支持的写法是 `openai_base_url`。内置路径会先尝试 WebSocket，而当前中继只接受 HTTP/SSE，因此可能会多等几秒再自动回落到 HTTP。
 
+如果中继返回 `401 Unauthorized`，并提示 `api_key_not_supported`，先检查启动 Codex 的进程环境，不要改写 session。全局导出的 `OPENAI_BASE_URL` 或 `OPENAI_API_BASE` 可能让 Codex 强制选择 API key 认证，即使机器上已经有 ChatGPT OAuth。请从启动 Codex 的 shell 配置里删掉这些导出（以及可能存在的 `OPENAI_API_KEY`），再启动一个新的 Codex 进程。使用 ChatGPT 登录的机器还可以在 `config.toml` 里固定认证模式：
+
+```toml
+forced_login_method = "chatgpt"
+```
+
+无需改写 session 的 provider；退出旧 Codex 进程后重新 resume 即可。
+
 ### 卸载
 
 没有什么是不可逆的，三个平台都只是把中继停掉：

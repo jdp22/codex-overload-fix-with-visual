@@ -288,6 +288,14 @@ openai_base_url = "http://127.0.0.1:8787"
 
 Keep the existing `[model_providers.openai-retry]` table while migrating so sessions created during the earlier setup can still be resumed. The built-in `openai` id cannot be defined as a custom `[model_providers.openai]` table; `openai_base_url` is the supported way to point that built-in provider at the relay. The built-in path may spend a few seconds falling back from its WebSocket preflight because this relay currently accepts HTTP/SSE only.
 
+If the relay reports `401 Unauthorized` with `api_key_not_supported`, check the process environment before changing the session. A global `OPENAI_BASE_URL` or `OPENAI_API_BASE` export can make Codex select API-key authentication even when ChatGPT OAuth is available. Remove those exports (and any stale `OPENAI_API_KEY` export) from the shell that launches Codex, then start a new process. On a ChatGPT-login machine you can also pin the intended auth mode in `config.toml`:
+
+```toml
+forced_login_method = "chatgpt"
+```
+
+The session provider does not need to be rewritten; resume it after the old Codex process exits.
+
 ### Undo
 
 Nothing is permanent, and the relay is stopped the same way on every platform:
