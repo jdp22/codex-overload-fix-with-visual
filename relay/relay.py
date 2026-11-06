@@ -13,6 +13,7 @@ SSE stream is inspected to decide whether the attempt succeeded.
 
 import argparse
 import datetime
+from email.utils import parsedate_to_datetime
 import gzip
 import hashlib
 import hmac
@@ -63,6 +64,19 @@ def is_overload(err):
         or "overloaded" in msg
     )
 
+
+def is_usage_limit_response(data):
+    """True when a 429 is a plan/account quota exhaustion, not a transient rate limit."""
+    try:
+        payload = json.loads(data.decode("utf-8", "replace"))
+    except (AttributeError, TypeError, ValueError):
+        return False
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict):
+        return False
+    kind = str(error.get("type") or error.get("code") or "").lower()
+    return kind in {"usage_limit_reached", "usage_limit_exceeded"}
+
 LOG_LOCK = threading.Lock()
 LOG_SIZE = [0]
 LOG_MAX = 8 * 1024 * 1024
@@ -73,6 +87,60 @@ LOG_MAX = 8 * 1024 * 1024
 CONTENT_SEGMENT_MAX = 4000
 CONTENT_LOG_MAX = 2 * 1024 * 1024
 CONTENT_LOG_LOCK = threading.Lock()
+
+# A 429 is account/upstream-wide rather than request-local. Without a shared
+# cooldown, concurrent Codex workers all retry at once and keep the account in
+# the rate-limit window.
+RATE_LIMIT_LOCK = threading.Lock()
+RATE_LIMIT_UNTIL = 0.0
+DEFAULT_RATE_LIMIT_BACKOFF = 15.0
+
+
+def _header_value(headers, name):
+    wanted = name.lower()
+    for key, value in (headers or {}).items():
+        if str(key).lower() == wanted:
+            return str(value)
+    return ""
+
+
+def _retry_after_seconds(headers, now=None):
+    """Return a bounded Retry-After delay, or None when absent/invalid."""
+    value = _header_value(headers, "Retry-After").strip()
+    if not value:
+        return None
+    try:
+        return max(0.0, min(float(value), 3600.0))
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(value)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=datetime.timezone.utc)
+        current = time.time() if now is None else float(now)
+        return max(0.0, min(when.timestamp() - current, 3600.0))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def note_rate_limit(headers):
+    """Publish a shared cooldown and return the remaining delay."""
+    delay = _retry_after_seconds(headers)
+    if delay is None:
+        delay = DEFAULT_RATE_LIMIT_BACKOFF
+    until = time.time() + delay
+    global RATE_LIMIT_UNTIL
+    with RATE_LIMIT_LOCK:
+        RATE_LIMIT_UNTIL = max(RATE_LIMIT_UNTIL, until)
+        return max(0.0, RATE_LIMIT_UNTIL - time.time())
+
+
+def wait_for_rate_limit():
+    """Wait for a shared 429 cooldown before another upstream call."""
+    with RATE_LIMIT_LOCK:
+        remaining = RATE_LIMIT_UNTIL - time.time()
+    if remaining > 0:
+        time.sleep(remaining)
 
 
 def _content_log_path():
@@ -383,6 +451,18 @@ def attempt(path, headers, body, timeout, commit_by):
         conn.close()
         status = resp.status
         if status in (429, 500, 502, 503, 504):
+            if status == 429:
+                # Keep the bounded diagnostic useful when an upstream rate
+                # limit is account-wide. Response bodies here are error JSON,
+                # never request content or credentials.
+                detail = data[:512].decode("utf-8", "replace").replace("\n", " ")
+                log(
+                    "429 upstream retry_after=%s body=%s"
+                    % (_header_value(dict(resp.getheaders()), "Retry-After"), detail)
+                )
+                if is_usage_limit_response(data):
+                    log("429 usage limit reached; passing through without retry")
+                    return "passthrough", status, dict(resp.getheaders()), data, None, ""
             return "retry", status, dict(resp.getheaders()), data, None, f"http {status}"
         return "passthrough", status, dict(resp.getheaders()), data, None, ""
 
@@ -560,6 +640,7 @@ class Handler(BaseHTTPRequestHandler):
                 # Codex cancelled the turn or exited; stop burning upstream quota.
                 log(f"abandoning retries after {attempt_no} attempts (client gone)")
                 return
+            wait_for_rate_limit()
             attempt_no += 1
             mode, status, resp_headers, prelude, conn, resp = attempt(
                 upstream_path, headers, body, ARGS.timeout,
@@ -585,6 +666,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._send_simple(503, {"Content-Type": "text/plain"}, b"relay: upstream unavailable\n")
                 return
             delay = min(ARGS.backoff_max, ARGS.backoff_base * (1.6 ** (attempt_no - 1)))
+            if status == 429:
+                delay = max(delay, note_rate_limit(resp_headers))
             delay *= random.uniform(0.7, 1.3)
             time.sleep(delay)
 

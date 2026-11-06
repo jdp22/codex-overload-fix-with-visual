@@ -86,6 +86,7 @@ class RelayTests(unittest.TestCase):
     def setUp(self):
         MockUpstream.calls = 0
         MockUpstream.queued = []
+        relay.RATE_LIMIT_UNTIL = 0.0
         relay.ARGS = types.SimpleNamespace(
             upstream_host='127.0.0.1', upstream_port=self.upstream.server_port,
             upstream_scheme='http', upstream_prefix='', proxy=None, log='',
@@ -129,6 +130,15 @@ class RelayTests(unittest.TestCase):
         self.assertEqual(headers['Content-Type'], 'application/json')
         self.assertEqual(headers['Retry-After'], '17')
         self.assertEqual(body, b'{"error":"rate limited"}')
+
+    def test_usage_limit_429_is_not_retried(self):
+        payload = b'{"error":{"type":"usage_limit_reached","resets_in_seconds":10}}'
+        MockUpstream.queued = [(429, 'application/json', payload)]
+        relay.ARGS.max_attempts = 3
+        status, _, body = self.request()
+        self.assertEqual(status, 429)
+        self.assertEqual(body, payload)
+        self.assertEqual(MockUpstream.calls, 1)
 
     def test_exhausted_sse_overload_preserves_event(self):
         payload = event({'type': 'error', 'error': {'code': 'server_is_overloaded'}})
