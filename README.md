@@ -40,6 +40,10 @@ One evening of real use, measured:
 
 ## Local live dashboard
 
+For SSH servers that retain an old login after account changes, see
+[remote Codex login recovery](docs/remote-codex-login.md). It includes an optional
+login watcher, restart-failure retries, and persistent proxy configuration.
+
 The repository includes a dependency-free local dashboard for request volume, success rate, pending requests, retry counts and reasons, per-minute trends, recent requests, and relay/proxy health. The relay installer does not start the dashboard automatically; start it in a separate terminal:
 
 ```powershell

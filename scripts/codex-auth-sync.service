@@ -1,0 +1,16 @@
+[Unit]
+Description=Reload Codex app-server after ChatGPT login changes
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 "%h/.local/bin/codex-auth-sync.py" --codex "%h/.local/bin/codex"
+Environment="HOME=%h"
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Restart=always
+RestartSec=5
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
